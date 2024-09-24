@@ -1,0 +1,18 @@
+---------
+Zookeeper
+---------
+- A high performance coordination service. Used by many popular projects like
+Kafka, Hadoop, HBase etc. It is a distributed system itself.
+- Zookeeper's data model - a tree structure of sorts, where each node is called
+a Znode.
+- Znodes are a hybrid between File and directory. Two types: Persistent and Ephemeral.
+- Persistent znodes are persisted even if the creating service disconnects from zookeeper and joins later.
+- Ephemeral znodes are destroyed as soon as the creating service leaves the zookeeper cluster.
+
+-------------------------
+leader election algorithm
+-------------------------
+- Each joining node will submit its' candidacy to be the leader as soon as it joins the zookeeper by
+creating a znode under a `/election` znode. Zookeeper is capable of guaranteeing a increasing sequence number
+to the creating znodes as each joining service creates them. The service that creates the znode with the smallest
+sequence number will declare itself as the leader.
