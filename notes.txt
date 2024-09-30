@@ -16,3 +16,27 @@ leader election algorithm
 creating a znode under a `/election` znode. Zookeeper is capable of guaranteeing a increasing sequence number
 to the creating znodes as each joining service creates them. The service that creates the znode with the smallest
 sequence number will declare itself as the leader.
+
+---------------------
+Watchers and triggers
+---------------------
+- With zookeeper, we can register a watcher when we call the methods like -
+    getChildren(..watcher) --> get notified when the list of znode's children changes.
+    getData(znodePath, watcher) --> get notified if a znode's data get modified.
+    exists() --> get notified if a znode gets deleted or created.
+- The watcher allows us to get a notification when a change happens.
+- public ZooKeeper(String connectString, int sessionTimeout, Watcher watcher) - also takes a watcher.
+- Watchers registered with getChildren(), exists(), and getData() are one-time triggers, i.e. if we want to
+  get future notifications, we need to register the watcher again.
+
+----------------------------
+Leader re-election algorithm
+----------------------------
+- One way to trigger a re-election is that all the non-leader nodes can watch the leader's znode.
+Since it is a ephemeral znode, if in case the leader dies, the znode will be delete and the non leader nodes
+will get notified, and they can then initiate a leader reelection. But this approach suffers the problem of the
+so called 'heard effect' (read more)
+- Therefore, we can optimize it by letting each non leader node only watch its previous nodes' znode.
+This way, if the leader dies, the only node that is going to be notified is its immediate successor, which can then
+call getChildren to get the latest view of the znodes and decide if its znode has the lowest sequence number, and if so,
+declare itself as the leader!
