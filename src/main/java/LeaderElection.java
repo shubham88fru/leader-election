@@ -1,8 +1,8 @@
-import org.apache.zookeeper.WatchedEvent;
-import org.apache.zookeeper.Watcher;
-import org.apache.zookeeper.ZooKeeper;
+import org.apache.zookeeper.*;
 
 import java.io.IOException;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Implementation of a leader election algorithm.
@@ -39,15 +39,56 @@ public class LeaderElection implements Watcher {
      */
     private ZooKeeper zooKeeper;
 
-    public static void main(String[] args) throws IOException, InterruptedException {
+
+    private static final String ELECTION_ZNODE = "/election";
+
+    private String currentZnodeName;
+
+    public static void main(String[] args) throws IOException, InterruptedException, KeeperException {
         LeaderElection leaderElection = new LeaderElection();
         leaderElection.connectToZookeeper();
+
+        leaderElection.selfElectForLeader(); //each node will put try to put forward itself to be the leader.
+        leaderElection.electLeader(); //identify the leader.
 
         /*
          Put the main thread to wait state, otherwise,
          the app will stop as soon as main() finishes
          */
         leaderElection.run();
+    }
+
+    private void selfElectForLeader() throws InterruptedException, KeeperException {
+        String znodePrefix = ELECTION_ZNODE + "/c_";
+
+        /*
+            Each node creates a ephemeral znode on boot.
+         */
+        String znodeFullPath = zooKeeper.create(znodePrefix,
+                new byte[]{}, ZooDefs.Ids.OPEN_ACL_UNSAFE,
+        CreateMode.EPHEMERAL_SEQUENTIAL); //create sequential and ephemeral znodes. Crucial for leader election and re-election to work.
+
+        System.out.println("znode name " + znodeFullPath);
+        this.currentZnodeName = znodeFullPath.replace(ELECTION_ZNODE + "/", ""); //just the name - sequence number.
+
+    }
+
+    private void electLeader() throws InterruptedException, KeeperException {
+        List<String> children = zooKeeper.getChildren(ELECTION_ZNODE, false); //names (without path) of the children of ELECTION_ZNODE.
+
+        Collections.sort(children);
+        String smallestChild = children.get(0);
+
+        /*
+            The node which creates the znode with smallest sequence
+            number is the leader.
+         */
+        if (smallestChild.equals(currentZnodeName)) {
+            System.out.println("I am the leader!");
+            return;
+        }
+
+        System.out.println("I ain't the leader." + smallestChild + " is the leader." );
     }
 
     private void run() throws InterruptedException {
