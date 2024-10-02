@@ -1,4 +1,5 @@
 import org.apache.zookeeper.*;
+import org.apache.zookeeper.data.Stat;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -74,21 +75,44 @@ public class LeaderElection implements Watcher {
     }
 
     private void electLeader() throws InterruptedException, KeeperException {
-        List<String> children = zooKeeper.getChildren(ELECTION_ZNODE, false); //names (without path) of the children of ELECTION_ZNODE.
-
-        Collections.sort(children);
-        String smallestChild = children.get(0);
+        String predecessorZnodeName = "";
+        Stat predecessorStat = null;
 
         /*
-            The node which creates the znode with smallest sequence
-            number is the leader.
+            Keep trying until I find a prev znode to hook onto
+            or I become the leader. Essential of leader re-election.
          */
-        if (smallestChild.equals(currentZnodeName)) {
-            System.out.println("I am the leader!");
-            return;
+        while (predecessorStat == null) {
+            List<String> children = zooKeeper.getChildren(ELECTION_ZNODE, false); //names (without path) of the children of ELECTION_ZNODE.
+
+            Collections.sort(children);
+            String smallestChild = children.get(0);
+
+            /*
+                The node which creates the znode with smallest sequence
+                number is the leader.
+             */
+            if (smallestChild.equals(currentZnodeName)) {
+                System.out.println("I am the leader!");
+                return;
+            } else {
+                System.out.println("I ain't the leader." + smallestChild + " is the leader." );
+                int predecessorIndex = Collections.binarySearch(children, currentZnodeName) - 1; //find current node's predecessor's index.
+                predecessorZnodeName = children.get(predecessorIndex);
+
+                /*
+                    Current node will watch predecessor's znode --> core of the leader re-election algorithm.
+                    It might happen that by the time this line is executed and the current node is able to
+                    watch prev nodes' znode, the prev node (and its ephemeral znode) might already be dead, and
+                    it might happen that there is a breakage in the chain. Therefore, we do this in a loop and keep
+                    trying to find a predecessor znode to hook onto or until the current node becomes the leader itself.
+                 */
+                predecessorStat = zooKeeper.exists(ELECTION_ZNODE + "/" + predecessorZnodeName, this);
+            }
         }
 
-        System.out.println("I ain't the leader." + smallestChild + " is the leader." );
+        System.out.println("Watching znode " + predecessorZnodeName);
+        System.out.println();
     }
 
     private void run() throws InterruptedException {
@@ -146,6 +170,20 @@ public class LeaderElection implements Watcher {
                         System.out.println("Node disconnected from zookeeper..");
                         zooKeeper.notifyAll();
                     }
+                }
+            }
+
+            case NodeDeleted -> {
+                try {
+                    /*
+                        The znode that current node was watching got deleted.
+                        Fix the chain and if required re-elect the leader.
+                     */
+                    electLeader();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                } catch (KeeperException e) {
+                    throw new RuntimeException(e);
                 }
             }
         }
